@@ -2,6 +2,7 @@ from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
 from yt_dlp import YoutubeDL
 import threading, os, uuid
+import traceback
 
 app = Flask(__name__)
 CORS(app)
@@ -24,26 +25,27 @@ def download(task_id, url, mode, quality):
     def progress_hook(d):
         if d.get("status") == "downloading":
             if d.get("total_bytes") and d.get("downloaded_bytes"):
-                progress[task_id]["progress"] = int((d["downloaded_bytes"] / d["total_bytes"]) * 100)
+                try:
+                    progress[task_id]["progress"] = int((d["downloaded_bytes"] / d["total_bytes"]) * 100)
+                except Exception:
+                    progress[task_id]["progress"] = d.get("downloaded_bytes", 0)
 
     opts = {
         "outtmpl": os.path.join(DOWNLOADS, "%(title)s.%(ext)s"),
         "progress_hooks": [progress_hook],
         "merge_output_format": "mp4",
-
         "postprocessors": [
             {"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}
         ],
-
-        # ✅ CLIENTE QUE NÃO PEDE LOGIN E ENTREGA 720p/1080p EM MP4 DIRETO
+        # Use iOS player client to maximize bypass of login/captcha restrictions
         "extractor_args": {
             "youtube": {
-                "player_client": ["tv_html5"]
+                "player_client": ["ios"]
             }
         },
-
         "nocheckcertificate": True,
-        "ignoreerrors": True
+        "ignoreerrors": True,
+        "quiet": True,
     }
 
     if mode == "audio":
@@ -67,24 +69,30 @@ def download(task_id, url, mode, quality):
             progress[task_id]["file"] = filename
             progress[task_id]["status"] = "done"
 
-    except:
+    except Exception as e:
         progress[task_id]["status"] = "error"
-
+        # save error details to file for debugging
+        err_path = os.path.join(DOWNLOADS, f"{task_id}_error.txt")
+        with open(err_path, "w", encoding="utf-8") as ef:
+            ef.write("Exception:\n")
+            ef.write(traceback.format_exc())
+        progress[task_id]["file"] = err_path
 
 @app.get("/download")
 def create_download():
     url = request.args.get("url")
-    mode = request.args.get("type")
+    mode = request.args.get("type", "audio")
     quality = request.args.get("quality", "720p")
+    if not url:
+        return jsonify({"error": "missing url parameter"}), 400
     task = str(uuid.uuid4())
     threading.Thread(target=download, args=(task, url, mode, quality), daemon=True).start()
     return jsonify({"task": task})
 
-
 @app.get("/progress")
 def get_progress():
-    return jsonify(progress.get(request.args.get("task"), {"status": "notfound"}))
-
+    task = request.args.get("task")
+    return jsonify(progress.get(task, {"status": "notfound"}))
 
 @app.get("/file")
 def get_file():
@@ -94,8 +102,5 @@ def get_file():
         return send_file(file_path, as_attachment=True)
     return "", 404
 
-
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
-
-
