@@ -26,25 +26,25 @@ def download(task_id, url, mode, quality):
             if d.get("total_bytes") and d.get("downloaded_bytes"):
                 progress[task_id]["progress"] = int((d["downloaded_bytes"] / d["total_bytes"]) * 100)
 
- opts = {
-    "outtmpl": os.path.join(DOWNLOADS, "%(title)s.%(ext)s"),
-    "progress_hooks": [progress_hook],
-    "merge_output_format": "mp4",
-    "postprocessors": [
-        {"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}
-    ],
+    opts = {
+        "outtmpl": os.path.join(DOWNLOADS, "%(title)s.%(ext)s"),
+        "progress_hooks": [progress_hook],
+        "merge_output_format": "mp4",
 
-    # 🔥 TRUQUE MÁGICO QUE REMOVE LOGIN, CAPTCHA E IDADE:
-    "extractor_args": {
-        "youtube": {
-            "player_client": ["android"],  # ← aqui o segredo
-        }
-    },
+        "postprocessors": [
+            {"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}
+        ],
 
-    "nocheckcertificate": True,
-    "ignoreerrors": True
-}
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "web_safari", "tv"],     # ✅ MULTI-CLIENTE (ANTI-CAPTCHA + MAIOR COMPATIBILIDADE)
+                "po_token": "android.gvs"                            # ✅ DESBLOQUEIO DE 1080p/4K SEM LOGIN
+            }
+        },
 
+        "nocheckcertificate": True,
+        "ignoreerrors": True
+    }
 
     if mode == "audio":
         opts.update({
