@@ -4,3 +4,5 @@ __pycache__/
 *.webm
 *.mp3
 *.env
+.venv/
+cookies.txt
