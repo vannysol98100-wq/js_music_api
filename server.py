@@ -29,10 +29,13 @@ def download(task_id, url, mode, quality):
     opts = {
         "outtmpl": os.path.join(DOWNLOADS, "%(title)s.%(ext)s"),
         "progress_hooks": [progress_hook],
-        "merge_output_format": "mp4",  # IMPORTANTE!
+        "merge_output_format": "mp4",
         "postprocessors": [
             {"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}
-        ]
+        ],
+        "cookiefile": "cookies.txt",
+        "nocheckcertificate": True,
+        "ignoreerrors": True
     }
 
     if mode == "audio":
