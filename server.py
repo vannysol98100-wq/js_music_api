@@ -12,7 +12,7 @@ os.makedirs(DOWNLOADS, exist_ok=True)
 progress = {}
 
 def download(task_id, url, mode, quality):
-    progress[task_id] = {"progress":0,"status":"downloading","file":None}
+    progress[task_id] = {"progress": 0, "status": "downloading", "file": None}
 
     quality_map = {
         "1080p": "bestvideo[height<=1080]+bestaudio/best",
@@ -35,10 +35,10 @@ def download(task_id, url, mode, quality):
             {"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}
         ],
 
+        # ✅ CLIENTE QUE NÃO PEDE LOGIN E ENTREGA 720p/1080p EM MP4 DIRETO
         "extractor_args": {
             "youtube": {
-                "player_client": ["android", "web_safari", "tv"],     # ✅ MULTI-CLIENTE (ANTI-CAPTCHA + MAIOR COMPATIBILIDADE)
-                "po_token": "android.gvs"                            # ✅ DESBLOQUEIO DE 1080p/4K SEM LOGIN
+                "player_client": ["tv_html5"]
             }
         },
 
@@ -70,6 +70,7 @@ def download(task_id, url, mode, quality):
     except:
         progress[task_id]["status"] = "error"
 
+
 @app.get("/download")
 def create_download():
     url = request.args.get("url")
@@ -79,9 +80,11 @@ def create_download():
     threading.Thread(target=download, args=(task, url, mode, quality), daemon=True).start()
     return jsonify({"task": task})
 
+
 @app.get("/progress")
 def get_progress():
     return jsonify(progress.get(request.args.get("task"), {"status": "notfound"}))
+
 
 @app.get("/file")
 def get_file():
@@ -91,6 +94,8 @@ def get_file():
         return send_file(file_path, as_attachment=True)
     return "", 404
 
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
+
 
