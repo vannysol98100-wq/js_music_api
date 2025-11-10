@@ -1,8 +1,3 @@
-#!/bin/bash
-
-apt-get update -y
-apt-get install -y ffmpeg
-
-pip install -r requirements.txt
+#!/usr/bin/env bash
 
 gunicorn server:app --bind 0.0.0.0:$PORT
