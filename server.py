@@ -26,6 +26,7 @@ def download(task_id, url, mode, quality):
             if d.get("total_bytes") and d.get("downloaded_bytes"):
                 progress[task_id]["progress"] = int((d["downloaded_bytes"] / d["total_bytes"]) * 100)
 
+    # ✅ AQUI ESTÁ O SEGREDO — sem cookies, sem login, sem captcha
     opts = {
         "outtmpl": os.path.join(DOWNLOADS, "%(title)s.%(ext)s"),
         "progress_hooks": [progress_hook],
@@ -33,7 +34,11 @@ def download(task_id, url, mode, quality):
         "postprocessors": [
             {"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}
         ],
-        "cookiefile": "cookies.txt",
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android"]
+            }
+        },
         "nocheckcertificate": True,
         "ignoreerrors": True
     }
@@ -50,12 +55,15 @@ def download(task_id, url, mode, quality):
         with YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
+
             if mode == "audio":
                 filename = filename.rsplit(".", 1)[0] + ".mp3"
             else:
                 filename = filename.rsplit(".", 1)[0] + ".mp4"
+
             progress[task_id]["file"] = filename
             progress[task_id]["status"] = "done"
+
     except:
         progress[task_id]["status"] = "error"
 
@@ -82,3 +90,4 @@ def get_file():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
+
