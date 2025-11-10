@@ -26,22 +26,25 @@ def download(task_id, url, mode, quality):
             if d.get("total_bytes") and d.get("downloaded_bytes"):
                 progress[task_id]["progress"] = int((d["downloaded_bytes"] / d["total_bytes"]) * 100)
 
-    # ✅ AQUI ESTÁ O SEGREDO — sem cookies, sem login, sem captcha
-    opts = {
-        "outtmpl": os.path.join(DOWNLOADS, "%(title)s.%(ext)s"),
-        "progress_hooks": [progress_hook],
-        "merge_output_format": "mp4",
-        "postprocessors": [
-            {"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}
-        ],
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["android"]
-            }
-        },
-        "nocheckcertificate": True,
-        "ignoreerrors": True
-    }
+ opts = {
+    "outtmpl": os.path.join(DOWNLOADS, "%(title)s.%(ext)s"),
+    "progress_hooks": [progress_hook],
+    "merge_output_format": "mp4",
+    "postprocessors": [
+        {"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}
+    ],
+
+    # 🔥 TRUQUE MÁGICO QUE REMOVE LOGIN, CAPTCHA E IDADE:
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["android"],  # ← aqui o segredo
+        }
+    },
+
+    "nocheckcertificate": True,
+    "ignoreerrors": True
+}
+
 
     if mode == "audio":
         opts.update({
