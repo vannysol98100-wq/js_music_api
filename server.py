@@ -1,8 +1,7 @@
-# server.py
 from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
 from yt_dlp import YoutubeDL
-import threading, os, uuid, tempfile, traceback, shutil
+import threading, os, uuid, tempfile
 
 app = Flask(__name__)
 CORS(app)
@@ -12,12 +11,8 @@ os.makedirs(DOWNLOADS, exist_ok=True)
 
 progress = {}
 
-def download(task_id, url, mode, quality, cookiefile_path=None):
-    """
-    Faz o download. Se cookiefile_path for passado (caminho local para cookies.txt),
-    o yt-dlp usará esse cookiefile.
-    """
-    progress[task_id] = {"progress": 0, "status": "downloading", "file": None, "note": None}
+def download(task_id, url, mode, quality, cookies_path=None):
+    progress[task_id] = {"progress":0, "status":"downloading", "file":None}
 
     quality_map = {
         "1080p": "bestvideo[height<=1080]+bestaudio/best",
@@ -29,28 +24,18 @@ def download(task_id, url, mode, quality, cookiefile_path=None):
     def progress_hook(d):
         if d.get("status") == "downloading":
             if d.get("total_bytes") and d.get("downloaded_bytes"):
-                try:
-                    progress[task_id]["progress"] = int((d["downloaded_bytes"] / d["total_bytes"]) * 100)
-                except Exception:
-                    progress[task_id]["progress"] = 0
+                progress[task_id]["progress"] = int((d["downloaded_bytes"] / d["total_bytes"]) * 100)
 
     opts = {
         "outtmpl": os.path.join(DOWNLOADS, "%(title)s.%(ext)s"),
         "progress_hooks": [progress_hook],
         "merge_output_format": "mp4",
-        "postprocessors": [
-            {"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}
-        ],
-        # iOS client por padrão (melhor bypass). Se cookiefile_path fornecido, cookiefile será usado também.
-        "extractor_args": {"youtube": {"player_client": ["ios"]}},
-        "nocheckcertificate": True,
-        "ignoreerrors": True,
-        "quiet": True,
+        "noplaylist": True,
+        "extractor_args": {"youtube": {"player_client": ["android"]}},  # <-- ANTI CAPTCHA
     }
 
-    # Se veio cookiefile, inclua no opts
-    if cookiefile_path:
-        opts["cookiefile"] = cookiefile_path
+    if cookies_path:
+        opts["cookiefile"] = cookies_path
 
     if mode == "audio":
         opts.update({
@@ -72,77 +57,50 @@ def download(task_id, url, mode, quality, cookiefile_path=None):
 
             progress[task_id]["file"] = filename
             progress[task_id]["status"] = "done"
-            # se usamos cookiefile, podemos apagar após finalizado
-            if cookiefile_path and os.path.exists(cookiefile_path):
-                try:
-                    os.remove(cookiefile_path)
-                except: pass
 
     except Exception as e:
-        tb = traceback.format_exc()
-        # marca o erro e salva um arquivo de debug para investigar
-        err_path = os.path.join(DOWNLOADS, f"{task_id}_error.txt")
-        with open(err_path, "w", encoding="utf-8") as ef:
-            ef.write("Exception:\n")
-            ef.write(tb)
-        # detecta mensagem de "Sign in to confirm you’re not a bot"
         msg = str(e).lower()
-        if "sign in to confirm" in msg or "sign in to confirm" in tb.lower() or "use --cookies" in tb.lower():
+
+        # Aqui detectamos o CAPTCHA e ativamos o pop-up
+        if "sign in" in msg or "confirm you" in msg or "login" in msg or "cookie" in msg:
             progress[task_id]["status"] = "need_cookies"
-            progress[task_id]["note"] = "This video requires cookies (user login). Upload a cookies.txt with the same request or retry with account cookies."
         else:
             progress[task_id]["status"] = "error"
-            progress[task_id]["note"] = "Unexpected error. Check error file."
-        progress[task_id]["file"] = err_path
-        # cleanup cookiefile (if any)
-        if cookiefile_path and os.path.exists(cookiefile_path):
-            try:
-                os.remove(cookiefile_path)
-            except: pass
 
-@app.route("/download", methods=["GET", "POST"])
-def create_download():
-    """
-    GET usage (normal): /download?url=...&type=audio&quality=720p
-    POST usage (upload cookies): multipart/form-data with fields:
-      - url (text)
-      - type (text) optional
-      - quality (text) optional
-      - cookies (file) optional -> cookies.txt uploaded by user
-    """
-    # accept both GET and POST
-    if request.method == "GET":
-        url = request.args.get("url")
-        mode = request.args.get("type", "audio")
-        quality = request.args.get("quality", "720p")
-        cookiefile_path = None
-    else:
-        url = request.form.get("url")
-        mode = request.form.get("type", "audio")
-        quality = request.form.get("quality", "720p")
-        cookiefile_path = None
-        # handle uploaded cookies file
-        uploaded = request.files.get("cookies")
-        if uploaded:
-            # Salva em /tmp com nome relacionado ao task (gerado abaixo)
-            # mas precisamos do task_id antes - então geramos temporário aqui e renomeamos depois
-            tmpdir = tempfile.gettempdir()
-            # create a safe tmp file path; will be moved into download thread args
-            cookiefile_path = os.path.join(tmpdir, f"cookies_upload_{uuid.uuid4().hex}.txt")
-            uploaded.save(cookiefile_path)
 
-    if not url:
-        return jsonify({"error": "missing url parameter"}), 400
+@app.post("/download")
+def post_download():
+    url = request.form.get("url")
+    mode = request.form.get("type")
+    quality = request.form.get("quality", "720p")
+
+    cookies_file = request.files.get("cookies")
+    cookies_path = None
+
+    if cookies_file:
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
+        cookies_file.save(tmp.name)
+        cookies_path = tmp.name
 
     task = str(uuid.uuid4())
-    # if POST and a cookiefile was uploaded, we already created it above; pass its path to thread
-    threading.Thread(target=download, args=(task, url, mode, quality, cookiefile_path), daemon=True).start()
+    threading.Thread(target=download, args=(task, url, mode, quality, cookies_path), daemon=True).start()
     return jsonify({"task": task})
+
+
+@app.get("/download")
+def get_download():
+    url = request.args.get("url")
+    mode = request.args.get("type")
+    quality = request.args.get("quality", "720p")
+    task = str(uuid.uuid4())
+    threading.Thread(target=download, args=(task, url, mode, quality, None), daemon=True).start()
+    return jsonify({"task": task})
+
 
 @app.get("/progress")
 def get_progress():
-    task = request.args.get("task")
-    return jsonify(progress.get(task, {"status": "notfound"}))
+    return jsonify(progress.get(request.args.get("task"), {"status": "notfound"}))
+
 
 @app.get("/file")
 def get_file():
@@ -151,6 +109,7 @@ def get_file():
     if file_path and os.path.exists(file_path):
         return send_file(file_path, as_attachment=True)
     return "", 404
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
