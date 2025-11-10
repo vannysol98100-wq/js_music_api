@@ -21,57 +21,61 @@ def download(task_id, url, mode, quality):
         "360p": "bestvideo[height<=360]+bestaudio/best"
     }
 
-    def hook(d):
-        if d["status"]=="downloading":
+    def progress_hook(d):
+        if d.get("status") == "downloading":
             if d.get("total_bytes") and d.get("downloaded_bytes"):
-                progress[task_id]["progress"] = int((d["downloaded_bytes"]/d["total_bytes"])*100)
+                progress[task_id]["progress"] = int((d["downloaded_bytes"] / d["total_bytes"]) * 100)
 
     opts = {
-        "progress_hooks":[hook],
-        "outtmpl":os.path.join(DOWNLOADS,"%(_filename)s.%(ext)s")
+        "outtmpl": os.path.join(DOWNLOADS, "%(title)s.%(ext)s"),
+        "progress_hooks": [progress_hook],
+        "merge_output_format": "mp4",  # IMPORTANTE!
+        "postprocessors": [
+            {"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}
+        ]
     }
 
-    if mode=="audio":
+    if mode == "audio":
         opts.update({
-            "format":"bestaudio/best",
-            "postprocessors":[{"key":"FFmpegExtractAudio","preferredcodec":"mp3"}]
+            "format": "bestaudio/best",
+            "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}]
         })
     else:
-        opts.update({"format":quality_map.get(quality,"720p")})
+        opts.update({"format": quality_map.get(quality, "720p")})
 
     try:
         with YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url,download=True)
-            if mode=="audio":
-                file= os.path.join(DOWNLOADS,info["title"]+".mp3")
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+            if mode == "audio":
+                filename = filename.rsplit(".", 1)[0] + ".mp3"
             else:
-                file = ydl.prepare_filename(info)
-            progress[task_id]["file"]=file
-            progress[task_id]["status"]="done"
+                filename = filename.rsplit(".", 1)[0] + ".mp4"
+            progress[task_id]["file"] = filename
+            progress[task_id]["status"] = "done"
     except:
-        progress[task_id]["status"]="error"
+        progress[task_id]["status"] = "error"
 
 @app.get("/download")
-def dl():
-    url=request.args.get("url")
-    mode=request.args.get("type")
-    quality=request.args.get("quality","720p")
-    task=str(uuid.uuid4())
-    threading.Thread(target=download,args=(task,url,mode,quality),daemon=True).start()
-    return jsonify({"task":task})
+def create_download():
+    url = request.args.get("url")
+    mode = request.args.get("type")
+    quality = request.args.get("quality", "720p")
+    task = str(uuid.uuid4())
+    threading.Thread(target=download, args=(task, url, mode, quality), daemon=True).start()
+    return jsonify({"task": task})
 
 @app.get("/progress")
-def prg():
-    task=request.args.get("task")
-    return jsonify(progress.get(task,{"status":"notfound"}))
+def get_progress():
+    return jsonify(progress.get(request.args.get("task"), {"status": "notfound"}))
 
 @app.get("/file")
-def file():
-    task=request.args.get("task")
-    file=progress.get(task,{}).get("file")
-    if file and os.path.exists(file):
-        return send_file(file,as_attachment=True)
-    return "",404
+def get_file():
+    task = request.args.get("task")
+    file_path = progress.get(task, {}).get("file")
+    if file_path and os.path.exists(file_path):
+        return send_file(file_path, as_attachment=True)
+    return "", 404
 
-if __name__=="__main__":
-    app.run(host="0.0.0.0",port=8080)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)
